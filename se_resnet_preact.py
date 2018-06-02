@@ -3,12 +3,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 
 
 def initialize_weights(module):
     if isinstance(module, nn.Conv2d):
-        nn.init.kaiming_normal(module.weight.data, mode='fan_out')
+        nn.init.kaiming_normal_(module.weight.data, mode='fan_out')
     elif isinstance(module, nn.BatchNorm2d):
         module.weight.data.fill_(1)
         module.bias.data.zero_()
@@ -26,8 +25,7 @@ class SELayer(nn.Module):
 
     def forward(self, x):
         n_batches, n_channels, _, _ = x.size()
-        y = F.adaptive_avg_pool2d(
-            x, output_size=1).view(n_batches, n_channels)
+        y = F.adaptive_avg_pool2d(x, output_size=1).view(n_batches, n_channels)
         y = F.relu(self.fc1(y), inplace=True)
         y = F.sigmoid(self.fc2(y)).view(n_batches, n_channels, 1, 1)
         return x * y
@@ -36,8 +34,14 @@ class SELayer(nn.Module):
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_channels, out_channels, stride, remove_first_relu,
-                 add_last_bn, se_reduction, preact=False):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 stride,
+                 remove_first_relu,
+                 add_last_bn,
+                 se_reduction,
+                 preact=False):
         super(BasicBlock, self).__init__()
 
         self._remove_first_relu = remove_first_relu
@@ -104,8 +108,14 @@ class BasicBlock(nn.Module):
 class BottleneckBlock(nn.Module):
     expansion = 4
 
-    def __init__(self, in_channels, out_channels, stride, remove_first_relu,
-                 add_last_bn, se_reduction, preact=False):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 stride,
+                 remove_first_relu,
+                 add_last_bn,
+                 se_reduction,
+                 preact=False):
         super(BottleneckBlock, self).__init__()
 
         self._remove_first_relu = remove_first_relu
@@ -247,9 +257,9 @@ class Network(nn.Module):
         self.bn = nn.BatchNorm2d(n_channels[2])
 
         # compute conv feature size
-        self.feature_size = self._forward_conv(
-            Variable(torch.zeros(*input_shape),
-                     volatile=True)).view(-1).shape[0]
+        with torch.no_grad():
+            self.feature_size = self._forward_conv(
+                torch.zeros(*input_shape)).view(-1).shape[0]
 
         self.fc = nn.Linear(self.feature_size, n_classes)
 
@@ -262,25 +272,27 @@ class Network(nn.Module):
         for index in range(n_blocks):
             block_name = 'block{}'.format(index + 1)
             if index == 0:
-                stage.add_module(block_name,
-                                 block(
-                                     in_channels,
-                                     out_channels,
-                                     stride=stride,
-                                     remove_first_relu=self._remove_first_relu,
-                                     add_last_bn=self._add_last_bn,
-                                     se_reduction=se_reduction,
-                                     preact=preact))
+                stage.add_module(
+                    block_name,
+                    block(
+                        in_channels,
+                        out_channels,
+                        stride=stride,
+                        remove_first_relu=self._remove_first_relu,
+                        add_last_bn=self._add_last_bn,
+                        se_reduction=se_reduction,
+                        preact=preact))
             else:
-                stage.add_module(block_name,
-                                 block(
-                                     out_channels,
-                                     out_channels,
-                                     stride=1,
-                                     remove_first_relu=self._remove_first_relu,
-                                     add_last_bn=self._add_last_bn,
-                                     se_reduction=se_reduction,
-                                     preact=False))
+                stage.add_module(
+                    block_name,
+                    block(
+                        out_channels,
+                        out_channels,
+                        stride=1,
+                        remove_first_relu=self._remove_first_relu,
+                        add_last_bn=self._add_last_bn,
+                        se_reduction=se_reduction,
+                        preact=False))
         return stage
 
     def _forward_conv(self, x):
